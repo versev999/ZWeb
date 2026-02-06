@@ -6,28 +6,20 @@
 
 ### 安装依赖
 
-**GPU 用户（推荐）：**
+
 
 ```bash
-# 先安装 CUDA 12.8+ 版本的 PyTorch
-uv add torch==2.9.1 torchvision --index-url https://download.pytorch.org/whl/cu128
-
-# 再安装其他依赖
+# 安装依赖
 uv sync
 ```
 
-**CPU 用户：**
 
-```bash
-uv sync
-```
+
 
 ### 启动服务
 
 ```bash
 uv run uvicorn main:app --reload
-# 或使用项目命令
-uv run zweb
 ```
 
 服务启动后访问：

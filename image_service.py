@@ -65,9 +65,10 @@ class BaseImageGenerator(ABC):
 class LocalModelGenerator(BaseImageGenerator):
     """本地模型图像生成器"""
     
-    def __init__(self, model_path: str, device: str = "cuda"):
+    def __init__(self, model_path: str, device: str = "cuda", enable_optimizations: bool = True):
         self.model_path = model_path
         self.device = device
+        self.enable_optimizations = enable_optimizations
         self._model = None
         self._pipe = None
     
@@ -99,28 +100,58 @@ class LocalModelGenerator(BaseImageGenerator):
             
             # 加载模型
             print("📦 正在加载模型文件...")
+            
+            # 尝试加载VAE（如果存在单独的VAE）
+            vae = None
+            try:
+                from diffusers import AutoencoderKL
+                vae_path = model_path / "vae"
+                if vae_path.exists():
+                    print("📦 检测到独立VAE，正在加载...")
+                    vae = AutoencoderKL.from_pretrained(
+                        str(vae_path),
+                        torch_dtype=torch.float32,  # VAE使用float32避免NaN
+                    )
+                    print("✅ VAE加载成功 (float32)")
+            except Exception as e:
+                print(f"ℹ️  未加载独立VAE: {e}")
+            
+            # 加载主模型
+            # Z-Image模型需要使用float32避免NaN黑图问题
+            load_kwargs = {
+                "torch_dtype": torch.float32,
+                "use_safetensors": True,
+            }
+            
+            # 如果有独立VAE，使用它
+            if vae is not None:
+                load_kwargs["vae"] = vae
+            
             self._pipe = DiffusionPipeline.from_pretrained(
                 self.model_path,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                use_safetensors=True,
+                **load_kwargs
             )
+            
+            print("ℹ️  使用 float32 精度（Z-Image模型要求）")
             
             # 移动到指定设备
             print(f"🚀 正在将模型移动到 {self.device}...")
             self._pipe = self._pipe.to(self.device)
             
-            # 优化内存使用
-            if self.device == "cuda":
-                # 启用内存优化
-                self._pipe.enable_attention_slicing()
-                print("✅ 已启用 Attention Slicing 内存优化")
-                
-                # 如果支持，启用 xformers
-                try:
-                    self._pipe.enable_xformers_memory_efficient_attention()
-                    print("✅ 已启用 xformers 内存优化")
-                except Exception:
-                    print("ℹ️  xformers 不可用，跳过（不影响正常使用）")
+            # 检查模型组件
+            print(f"📋 模型组件:")
+            if hasattr(self._pipe, 'vae'):
+                print(f"   ✅ VAE: {type(self._pipe.vae).__name__} ({self._pipe.vae.dtype})")
+            if hasattr(self._pipe, 'transformer'):
+                print(f"   ✅ Transformer: {type(self._pipe.transformer).__name__} ({self._pipe.transformer.dtype})")
+            elif hasattr(self._pipe, 'unet'):
+                print(f"   ✅ UNet: {type(self._pipe.unet).__name__} ({self._pipe.unet.dtype})")
+            if hasattr(self._pipe, 'text_encoder'):
+                print(f"   ✅ Text Encoder: {type(self._pipe.text_encoder).__name__}")
+            
+            # 应用优化
+            if self.device == "cuda" and self.enable_optimizations:
+                self._apply_optimizations()
             
             print(f"✅ 模型加载成功!")
             print(f"{'='*60}\n")
@@ -135,6 +166,80 @@ class LocalModelGenerator(BaseImageGenerator):
             raise FileNotFoundError(f"❌ {e}")
         except Exception as e:
             raise RuntimeError(f"❌ 模型加载失败: {e}")
+    
+    def _apply_optimizations(self):
+        """应用各种推理优化"""
+        import torch
+        
+        print(f"\n🚀 应用推理优化:")
+        optimizations_applied = []
+        
+        # 1. Attention Slicing - 降低内存占用
+        try:
+            self._pipe.enable_attention_slicing(slice_size="auto")
+            optimizations_applied.append("✅ Attention Slicing")
+        except Exception as e:
+            print(f"   ⚠️  Attention Slicing 失败: {e}")
+        
+        # 2. xformers - 内存高效的注意力机制
+        try:
+            self._pipe.enable_xformers_memory_efficient_attention()
+            optimizations_applied.append("✅ xformers 内存优化")
+        except Exception as e:
+            optimizations_applied.append("ℹ️  xformers 不可用")
+        
+        # 3. VAE Slicing - 降低VAE解码的内存占用
+        try:
+            if hasattr(self._pipe, 'enable_vae_slicing'):
+                self._pipe.enable_vae_slicing()
+                optimizations_applied.append("✅ VAE Slicing")
+        except Exception:
+            pass
+        
+        # 4. VAE Tiling - 处理大图像时分块解码
+        try:
+            if hasattr(self._pipe, 'enable_vae_tiling'):
+                self._pipe.enable_vae_tiling()
+                optimizations_applied.append("✅ VAE Tiling")
+        except Exception:
+            pass
+        
+        # 5. Torch Compile (PyTorch 2.0+) - 最强加速
+        # 注意: Z-Image模型的RoPE实现与torch.compile不兼容，暂时禁用
+        # 如果是标准的Stable Diffusion模型，可以启用此优化
+        if False and torch.__version__ >= "2.0.0":
+            try:
+                # 编译 UNet/Transformer 以获得最大加速
+                if hasattr(self._pipe, 'transformer'):
+                    self._pipe.transformer = torch.compile(
+                        self._pipe.transformer,
+                        mode="reduce-overhead",
+                        fullgraph=True
+                    )
+                    optimizations_applied.append("✅ Torch Compile (Transformer)")
+                elif hasattr(self._pipe, 'unet'):
+                    self._pipe.unet = torch.compile(
+                        self._pipe.unet,
+                        mode="reduce-overhead",
+                        fullgraph=True
+                    )
+                    optimizations_applied.append("✅ Torch Compile (UNet)")
+            except Exception as e:
+                optimizations_applied.append(f"ℹ️  Torch Compile 跳过: {str(e)[:50]}")
+        
+        # 6. CUDA优化
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
+            optimizations_applied.append("✅ CUDA TF32 + cuDNN Benchmark")
+        except Exception:
+            pass
+        
+        # 输出优化结果
+        for opt in optimizations_applied:
+            print(f"   {opt}")
+        print()
     
     async def generate(
         self,
@@ -210,6 +315,10 @@ class LocalModelGenerator(BaseImageGenerator):
         generator
     ):
         """同步生成图像（在线程池中执行）"""
+        import numpy as np
+        from PIL import Image
+        
+        # 生成图像（输出numpy数组）
         result = self._pipe(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -218,10 +327,31 @@ class LocalModelGenerator(BaseImageGenerator):
             num_inference_steps=steps,
             guidance_scale=guidance_scale,
             generator=generator,
+            output_type="np",
         )
         
-        # 返回第一张图像
-        return result.images[0]
+        # 获取numpy数组
+        images_np = result.images
+        
+        # 检查异常值（调试用）
+        if np.isnan(images_np).any() or np.isinf(images_np).any():
+            print("⚠️  警告: 检测到NaN或Inf值，正在清理...")
+            images_np = np.nan_to_num(images_np, nan=0.0, posinf=1.0, neginf=0.0)
+        
+        # 确保值在 [0, 1] 范围内
+        images_np = np.clip(images_np, 0, 1)
+        
+        # 转换为PIL图像
+        image_np = images_np[0]  # 取第一张图像
+        image_uint8 = (image_np * 255).round().astype(np.uint8)
+        
+        # 创建PIL图像
+        if image_uint8.shape[-1] == 3:
+            image = Image.fromarray(image_uint8, mode='RGB')
+        else:
+            image = Image.fromarray(image_uint8.squeeze(), mode='L')
+        
+        return image
 
 
 class RemoteAPIGenerator(BaseImageGenerator):
@@ -320,7 +450,8 @@ class ImageService:
             if model_type == "local":
                 self._generators[model_id] = LocalModelGenerator(
                     model_path=model_config.get("model_path", ""),
-                    device=model_config.get("device", "cuda")
+                    device=model_config.get("device", "cuda"),
+                    enable_optimizations=model_config.get("enable_optimizations", True)
                 )
             elif model_type == "remote":
                 self._generators[model_id] = RemoteAPIGenerator(

@@ -4,23 +4,35 @@ version = "0.1.0"
 description = "Z-Image 图像生成系统 - 基于大模型的图像生成服务"
 readme = "README.md"
 requires-python = ">=3.12"
+
 dependencies = [
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
-    "pyyaml>=6.0",
-    "httpx>=0.26.0",
-    "python-multipart>=0.0.6",
-    "pydantic>=2.5.0",
-    "torch>=2.0.0",
-    "diffusers>=0.25.0",
-    "transformers>=4.36.0",
-    "accelerate>=0.25.0",
-    "safetensors>=0.4.0",
-    "pillow>=10.0.0",
+  "fastapi>=0.109.0",
+  "uvicorn[standard]>=0.27.0",
+  "pyyaml>=6.0",
+  "httpx>=0.26.0",
+  "python-multipart>=0.0.6",
+  "pydantic>=2.5.0",
+  # ===== PyTorch cu128（锁死版本）=====
+  "torch==2.9.1",
+  "torchvision==0.24.1",
+  # ===== Diffusion / LLM 生态 =====
+  "diffusers>=0.25.0",
+  "transformers>=4.36.0",
+  "accelerate>=0.25.0",
+  "safetensors>=0.4.0",
+  # ===== 图像处理 =====
+  "pillow>=10.0.0",
+  "xformers>=0.0.33.post2",
 ]
 
 [project.scripts]
 zweb = "main:main"
 
 [tool.uv]
-index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+# 关键：cu128 轮子必须优先从 PyTorch 官方源拿（否则清华源里只有 CPU/不同构建）
+index-url = "https://download.pytorch.org/whl/cu128"
+
+# 其他包用清华源加速
+extra-index-url = [
+  "https://pypi.tuna.tsinghua.edu.cn/simple"
+]
