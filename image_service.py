@@ -6,6 +6,7 @@
 import base64
 import httpx
 import asyncio
+import io
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -68,12 +69,72 @@ class LocalModelGenerator(BaseImageGenerator):
         self.model_path = model_path
         self.device = device
         self._model = None
+        self._pipe = None
     
     def _load_model(self):
-        """加载本地模型（需要根据实际模型实现）"""
-        # TODO: 根据实际的 z-image 模型实现加载逻辑
-        # 示例: self._model = ZImageModel.from_pretrained(self.model_path)
-        pass
+        """加载本地模型"""
+        if self._pipe is not None:
+            return
+        
+        try:
+            import torch
+            from diffusers import DiffusionPipeline
+            
+            print(f"\n{'='*60}")
+            print(f"正在加载模型: {self.model_path}")
+            print(f"目标设备: {self.device}")
+            
+            # 检查模型路径是否存在
+            model_path = Path(self.model_path)
+            if not model_path.exists():
+                raise FileNotFoundError(f"模型路径不存在: {self.model_path}")
+            
+            # 检查设备可用性
+            if self.device == "cuda" and not torch.cuda.is_available():
+                print("⚠️  警告: CUDA不可用，切换到CPU模式")
+                self.device = "cpu"
+            elif self.device == "cuda":
+                print(f"✅ 检测到 GPU: {torch.cuda.get_device_name(0)}")
+                print(f"   显存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+            
+            # 加载模型
+            print("📦 正在加载模型文件...")
+            self._pipe = DiffusionPipeline.from_pretrained(
+                self.model_path,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                use_safetensors=True,
+            )
+            
+            # 移动到指定设备
+            print(f"🚀 正在将模型移动到 {self.device}...")
+            self._pipe = self._pipe.to(self.device)
+            
+            # 优化内存使用
+            if self.device == "cuda":
+                # 启用内存优化
+                self._pipe.enable_attention_slicing()
+                print("✅ 已启用 Attention Slicing 内存优化")
+                
+                # 如果支持，启用 xformers
+                try:
+                    self._pipe.enable_xformers_memory_efficient_attention()
+                    print("✅ 已启用 xformers 内存优化")
+                except Exception:
+                    print("ℹ️  xformers 不可用，跳过（不影响正常使用）")
+            
+            print(f"✅ 模型加载成功!")
+            print(f"{'='*60}\n")
+            
+        except ImportError as e:
+            raise ImportError(
+                f"❌ 缺少必要的依赖库。\n"
+                f"请安装: uv pip install torch diffusers transformers accelerate\n"
+                f"错误详情: {e}"
+            )
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"❌ {e}")
+        except Exception as e:
+            raise RuntimeError(f"❌ 模型加载失败: {e}")
     
     async def generate(
         self,
@@ -87,68 +148,80 @@ class LocalModelGenerator(BaseImageGenerator):
     ) -> ImageGenerationResult:
         """使用本地模型生成图像"""
         import time
+        import io
+        import torch
+        
         start_time = time.time()
         
         try:
-            # TODO: 实现实际的本地模型调用
-            # 目前返回模拟结果
-            await asyncio.sleep(0.5)  # 模拟生成时间
+            # 确保模型已加载
+            self._load_model()
             
-            # 生成一个简单的占位图像（灰色图像）
-            # 实际实现时替换为真实的模型调用
-            placeholder_image = self._generate_placeholder(width, height)
-            image_base64 = base64.b64encode(placeholder_image).decode("utf-8")
+            # 设置随机种子
+            generator = None
+            if seed is not None:
+                generator = torch.Generator(device=self.device).manual_seed(seed)
+            
+            # 在线程池中运行模型推理（避免阻塞异步事件循环）
+            loop = asyncio.get_event_loop()
+            image = await loop.run_in_executor(
+                None,
+                self._generate_sync,
+                prompt,
+                negative_prompt,
+                width,
+                height,
+                steps,
+                guidance_scale,
+                generator
+            )
+            
+            # 将PIL图像转换为字节
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='PNG')
+            image_bytes = img_byte_arr.getvalue()
+            
+            # 转换为base64
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
             
             generation_time = time.time() - start_time
             
             return ImageGenerationResult(
                 success=True,
-                image_data=placeholder_image,
+                image_data=image_bytes,
                 image_base64=image_base64,
                 generation_time=generation_time
             )
         except Exception as e:
             return ImageGenerationResult(
                 success=False,
-                error=str(e),
+                error=f"图像生成失败: {str(e)}",
                 generation_time=time.time() - start_time
             )
     
-    def _generate_placeholder(self, width: int, height: int) -> bytes:
-        """生成占位图像（用于测试）"""
-        # 生成一个简单的 PNG 图像
-        # 这是一个最小的有效 PNG（1x1 灰色像素，然后缩放说明）
-        import struct
-        import zlib
+    def _generate_sync(
+        self,
+        prompt: str,
+        negative_prompt: str,
+        width: int,
+        height: int,
+        steps: int,
+        guidance_scale: float,
+        generator
+    ):
+        """同步生成图像（在线程池中执行）"""
+        result = self._pipe(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            width=width,
+            height=height,
+            num_inference_steps=steps,
+            guidance_scale=guidance_scale,
+            generator=generator,
+        )
         
-        def create_png(w: int, h: int) -> bytes:
-            """创建简单的灰色 PNG 图像"""
-            # PNG 签名
-            signature = b'\x89PNG\r\n\x1a\n'
-            
-            # IHDR chunk
-            ihdr_data = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
-            ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
-            ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
-            
-            # IDAT chunk (简单的灰色图像)
-            raw_data = b''
-            for _ in range(h):
-                raw_data += b'\x00'  # filter byte
-                for _ in range(w):
-                    raw_data += b'\x80\x80\x80'  # RGB 灰色
-            
-            compressed = zlib.compress(raw_data)
-            idat_crc = zlib.crc32(b'IDAT' + compressed)
-            idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
-            
-            # IEND chunk
-            iend_crc = zlib.crc32(b'IEND')
-            iend = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
-            
-            return signature + ihdr + idat + iend
-        
-        return create_png(width, height)
+        # 返回第一张图像
+        return result.images[0]
 
 
 class RemoteAPIGenerator(BaseImageGenerator):

@@ -6,6 +6,18 @@
 
 ### 安装依赖
 
+**GPU 用户（推荐）：**
+
+```bash
+# 先安装 CUDA 12.8+ 版本的 PyTorch
+uv add torch==2.9.1 torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# 再安装其他依赖
+uv sync
+```
+
+**CPU 用户：**
+
 ```bash
 uv sync
 ```
@@ -14,6 +26,8 @@ uv sync
 
 ```bash
 uv run uvicorn main:app --reload
+# 或使用项目命令
+uv run zweb
 ```
 
 服务启动后访问：
@@ -39,21 +53,12 @@ ZWeb/
 
 编辑 `config.yaml` 配置模型：
 
-### 本地模型
 
-```yaml
-models:
-  my-local-model:
-    name: "我的本地模型"
-    type: "local"
-    model_path: "D:/models/z-image"
-    device: "cuda"  # 或 "cpu"
-    default_params:
-      width: 512
-      height: 512
-      steps: 20
-      guidance_scale: 7.5
-```
+**注意事项：**
+- 本地模型需要支持 Diffusers 格式
+- 首次加载模型会比较慢，请耐心等待
+- 如果没有 GPU，可以将 `device` 改为 `cpu`（速度会慢很多）
+- Turbo 版本使用更少的推理步数，生成速度更快但质量可能略有下降
 
 ### 远程 API 模型
 

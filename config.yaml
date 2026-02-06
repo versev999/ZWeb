@@ -2,17 +2,29 @@
 # 支持本地模型和远程 API 两种调用方式
 
 models:
-  # 本地模型配置示例
-  z-image-local:
-    name: "Z-Image 本地模型"
-    type: "local"                    # local = 本地模型
-    model_path: "D:/models/z-image"  # 模型文件路径
-    device: "cuda"                   # cuda 或 cpu
+  # Z-Image 标准版本地模型
+  z-image:
+    name: "Z-Image 标准版"
+    type: "local"
+    model_path: "/mnt/data/shared/models/Tongyi-MAI/Z-Image"
+    device: "cuda"
     default_params:
-      width: 512
-      height: 512
-      steps: 20
+      width: 1024
+      height: 1024
+      steps: 30
       guidance_scale: 7.5
+
+  # Z-Image Turbo 快速版本地模型
+  z-image-turbo:
+    name: "Z-Image Turbo 快速版"
+    type: "local"
+    model_path: "/mnt/data/shared/models/Tongyi-MAI/Z-Image-turbo"
+    device: "cuda"
+    default_params:
+      width: 1024
+      height: 1024
+      steps: 15
+      guidance_scale: 7.0
 
   # 远程 API 模型配置示例
   z-image-remote:
@@ -39,7 +51,7 @@ models:
       guidance_scale: 7.0
 
 # 默认使用的模型
-default_model: "z-image-local"
+default_model: "z-image"
 
 # 服务器配置
 server:
