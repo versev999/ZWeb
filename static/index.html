@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Z-Image 图像生成系统 - 基于大模型的AI图像生成服务">
+    <title>Z-Image | AI 图像生成</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 头部 -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🎨</span>
+                <span class="logo-text">Z-Image</span>
+            </div>
+            <p class="tagline">AI 驱动的图像生成</p>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 左侧：配置面板 -->
+            <aside class="config-panel">
+                <div class="panel-section">
+                    <h3 class="section-title">模型选择</h3>
+                    <select id="model-select" class="select-input">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+
+                <div class="panel-section">
+                    <h3 class="section-title">生成参数</h3>
+                    
+                    <div class="param-group">
+                        <label class="param-label">
+                            <span>宽度</span>
+                            <span id="width-value" class="param-value">512</span>
+                        </label>
+                        <input type="range" id="width-slider" class="slider" min="256" max="2048" step="64" value="512">
+                    </div>
+
+                    <div class="param-group">
+                        <label class="param-label">
+                            <span>高度</span>
+                            <span id="height-value" class="param-value">512</span>
+                        </label>
+                        <input type="range" id="height-slider" class="slider" min="256" max="2048" step="64" value="512">
+                    </div>
+
+                    <div class="param-group">
+                        <label class="param-label">
+                            <span>步数</span>
+                            <span id="steps-value" class="param-value">20</span>
+                        </label>
+                        <input type="range" id="steps-slider" class="slider" min="1" max="100" step="1" value="20">
+                    </div>
+
+                    <div class="param-group">
+                        <label class="param-label">
+                            <span>引导系数</span>
+                            <span id="guidance-value" class="param-value">7.5</span>
+                        </label>
+                        <input type="range" id="guidance-slider" class="slider" min="1" max="20" step="0.5" value="7.5">
+                    </div>
+
+                    <div class="param-group">
+                        <label class="param-label">
+                            <span>随机种子</span>
+                        </label>
+                        <input type="number" id="seed-input" class="text-input" placeholder="留空随机" min="-1">
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 中间：生成区域 -->
+            <section class="generation-area">
+                <div class="prompt-container">
+                    <textarea 
+                        id="prompt-input" 
+                        class="prompt-input" 
+                        placeholder="描述你想要生成的图像..."
+                        rows="3"
+                    ></textarea>
+                    <textarea 
+                        id="negative-prompt-input" 
+                        class="prompt-input negative" 
+                        placeholder="负面提示词（可选）- 描述你不想要的元素..."
+                        rows="2"
+                    ></textarea>
+                </div>
+
+                <button id="generate-btn" class="generate-btn">
+                    <span class="btn-text">✨ 生成图像</span>
+                    <span class="btn-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        生成中...
+                    </span>
+                </button>
+
+                <!-- 结果展示 -->
+                <div id="result-container" class="result-container" style="display: none;">
+                    <div class="result-header">
+                        <h3>生成结果</h3>
+                        <span id="generation-time" class="generation-time"></span>
+                    </div>
+                    <div class="image-wrapper">
+                        <img id="result-image" class="result-image" alt="生成的图像">
+                    </div>
+                    <div class="result-actions">
+                        <button id="download-btn" class="action-btn">
+                            📥 下载图像
+                        </button>
+                        <button id="copy-btn" class="action-btn">
+                            📋 复制到剪贴板
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 错误提示 -->
+                <div id="error-container" class="error-container" style="display: none;">
+                    <span class="error-icon">⚠️</span>
+                    <span id="error-message"></span>
+                </div>
+            </section>
+        </main>
+
+        <!-- 底部 -->
+        <footer class="footer">
+            <p>Powered by Z-Image Model | &copy; 2026</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

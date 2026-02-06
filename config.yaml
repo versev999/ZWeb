@@ -1,0 +1,52 @@
+# Z-Image 模型和服务器配置
+# 支持本地模型和远程 API 两种调用方式
+
+models:
+  # 本地模型配置示例
+  z-image-local:
+    name: "Z-Image 本地模型"
+    type: "local"                    # local = 本地模型
+    model_path: "D:/models/z-image"  # 模型文件路径
+    device: "cuda"                   # cuda 或 cpu
+    default_params:
+      width: 512
+      height: 512
+      steps: 20
+      guidance_scale: 7.5
+
+  # 远程 API 模型配置示例
+  z-image-remote:
+    name: "Z-Image 远程API"
+    type: "remote"                   # remote = 远程API调用
+    endpoint: "https://api.example.com/v1/generate"
+    api_key: "your-api-key-here"     # API密钥
+    default_params:
+      width: 1024
+      height: 1024
+      steps: 30
+      guidance_scale: 8.0
+
+  # Stable Diffusion API 示例
+  stable-diffusion-api:
+    name: "Stable Diffusion API"
+    type: "remote"
+    endpoint: "https://api.stability.ai/v1/generation"
+    api_key: "sk-xxx"
+    default_params:
+      width: 1024
+      height: 1024
+      steps: 50
+      guidance_scale: 7.0
+
+# 默认使用的模型
+default_model: "z-image-local"
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+# 输出配置
+output:
+  save_dir: "./generated_images"
+  format: "png"

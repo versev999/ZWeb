@@ -1,0 +1,17 @@
+[project]
+name = "zweb"
+version = "0.1.0"
+description = "Z-Image 图像生成系统 - 基于大模型的图像生成服务"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pyyaml>=6.0",
+    "httpx>=0.26.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.5.0",
+]
+
+[project.scripts]
+zweb = "main:main"
